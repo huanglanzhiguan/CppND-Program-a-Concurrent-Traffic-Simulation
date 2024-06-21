@@ -12,8 +12,8 @@ T MessageQueue<T>::receive()
     // The received object should then be returned by the receive function.
     std::unique_lock<std::mutex> uLock(_mutex);
     _condition.wait(uLock, [this] { return !_queue.empty(); });
-    T ret = std::move(_queue.front());
-    _queue.pop_front();
+    T ret = std::move(_queue.back());
+    _queue.pop_back();
     return ret;
 }
 
@@ -23,6 +23,7 @@ void MessageQueue<T>::send(T &&msg)
     // FP.4a : The method send should use the mechanisms std::lock_guard<std::mutex> 
     // as well as _condition.notify_one() to add a new message to the queue and afterwards send a notification.
     std::lock_guard<std::mutex> uLock(_mutex);
+    _queue.clear();
     _queue.push_back(std::move(msg));
     _condition.notify_one();
 }
@@ -68,27 +69,27 @@ void TrafficLight::cycleThroughPhases()
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dist(4000, 6000);
+    int cycleDuration = dist(gen);
+    auto lastTime = std::chrono::system_clock::now();
 
     while (true)
     {
         // Get the cycle duration
-        int cycleDuration = dist(gen);
-
-        // Wait for the duration of the cycle
-        std::this_thread::sleep_for(std::chrono::milliseconds(cycleDuration));
-
-        // Toggle the current phase of the traffic light
-        if (_currentPhase == TrafficLightPhase::red)
-        {
-            _currentPhase = TrafficLightPhase::green;
+        long timeDiff = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now() - lastTime).count();
+        if (timeDiff >= cycleDuration) {
+            // Toggle the current phase of the traffic light
+            if (_currentPhase == TrafficLightPhase::red)
+            {
+                _currentPhase = TrafficLightPhase::green;
+            }
+            else
+            {
+                _currentPhase = TrafficLightPhase::red;
+            }
+            _queue.send(std::move(_currentPhase));
+            lastTime = std::chrono::system_clock::now();
         }
-        else
-        {
-            _currentPhase = TrafficLightPhase::red;
-        }
-
-        // Send update to the message queue using move semantics
-        _queue.send(std::move(_currentPhase));
 
         // Sleep for 1ms between cycles to reduce CPU usage
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
